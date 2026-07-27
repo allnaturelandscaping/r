@@ -1,0 +1,17 @@
+{
+  "name": "LawnPro - Gestión de Cortes",
+  "short_name": "LawnPro",
+  "description": "Gestión profesional de cortes de césped",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a2e1a",
+  "theme_color": "#1a2e1a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}
