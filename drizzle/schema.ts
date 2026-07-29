@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { bigint, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 // Tabla de usuarios con Google OAuth y sistema de aprobación
 export const users = mysqlTable("users", {
@@ -40,9 +40,9 @@ export const scheduledCuts = mysqlTable("scheduled_cuts", {
   id: int("id").autoincrement().primaryKey(),
   clientId: int("clientId").notNull(),
   userId: int("userId").notNull(),
-  scheduledDate: int("scheduledDate", { unsigned: true }).notNull(),
+  scheduledDate: bigint("scheduledDate", { mode: "number", unsigned: true }).notNull(),
   status: mysqlEnum("status", ["pending", "completed", "skipped"]).notNull().default("pending"),
-  completedAt: int("completedAt", { unsigned: true }),
+  completedAt: bigint("completedAt", { mode: "number", unsigned: true }),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

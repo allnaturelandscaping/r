@@ -1,0 +1,2 @@
+ALTER TABLE `scheduled_cuts` MODIFY COLUMN `scheduledDate` BIGINT UNSIGNED NOT NULL;
+ALTER TABLE `scheduled_cuts` MODIFY COLUMN `completedAt` BIGINT UNSIGNED;
