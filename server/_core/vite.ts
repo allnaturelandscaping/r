@@ -1,13 +1,13 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import { type Server } from "http";
+import { nanoid } from "nanoid";
 import path from "path";
 
 export async function setupVite(app: Express, server: Server) {
   // Importación dinámica para que vite no se incluya en el bundle de producción
   const { createServer: createViteServer } = await import("vite");
   const { default: viteConfig } = await import("../../vite.config.js");
-  const { nanoid } = await import("nanoid");
 
   const serverOptions = {
     middlewareMode: true,
