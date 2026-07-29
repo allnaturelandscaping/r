@@ -1,5 +1,4 @@
-# ── Build stage ────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
 # Install pnpm
 RUN npm install -g pnpm@10.4.1
@@ -10,34 +9,17 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml* ./
 COPY patches/ ./patches/
 
-# Install ALL dependencies (devDeps needed for build)
+# Install ALL dependencies (vite needed for frontend build, tsx for runtime)
 RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
 
-# Build the app (Vite frontend → dist/public + esbuild backend → dist/index.js)
-RUN pnpm build
-
-# ── Production stage ────────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
-
-RUN npm install -g pnpm@10.4.1
-
-WORKDIR /app
-
-# Copy package files
-COPY package.json pnpm-lock.yaml* ./
-COPY patches/ ./patches/
-
-# Install only production dependencies
-RUN pnpm install --frozen-lockfile --prod
-
-# Copy built output from builder
-COPY --from=builder /app/dist ./dist
+# Build only the frontend (Vite)
+RUN pnpm exec vite build
 
 # Expose port
 EXPOSE 3000
 
-# Start the app
-CMD ["node", "dist/index.js"]
+# Run server with tsx (no esbuild compilation needed)
+CMD ["pnpm", "exec", "cross-env", "NODE_ENV=production", "tsx", "server/_core/index.ts"]
