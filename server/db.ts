@@ -129,11 +129,11 @@ export async function getClientById(id: number, userId: number) {
   return result[0];
 }
 
-export async function createClient(data: InsertClient) {
+export async function createClient(data: InsertClient): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  const result = await db.insert(clients).values(data);
-  return result[0];
+  const [result] = await db.insert(clients).values(data);
+  return (result as { insertId: number }).insertId;
 }
 
 export async function updateClient(

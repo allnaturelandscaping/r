@@ -9,6 +9,7 @@ import {
   getClientsByUserId,
   updateClient,
 } from "../db";
+// getClientsByUserId se usa en list y en el router de cuts
 
 export const clientsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -36,25 +37,21 @@ export const clientsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { firstCutDate, ...clientData } = input;
-      await createClient({
+      const newClientId = await createClient({
         ...clientData,
         userId: ctx.user.id,
         phone: clientData.phone ?? null,
         notes: clientData.notes ?? null,
       });
 
-      // Programar el primer corte
-      const db = await import("../db");
-      const allClients = await db.getClientsByUserId(ctx.user.id);
-      const newClient = allClients.find((c) => c.name === clientData.name);
-      if (newClient) {
-        await createScheduledCut({
-          clientId: newClient.id,
-          userId: ctx.user.id,
-          scheduledDate: firstCutDate,
-          status: "pending",
-        });
-      }
+      // Programar el primer corte usando el insertId directamente
+      await createScheduledCut({
+        clientId: newClientId,
+        userId: ctx.user.id,
+        scheduledDate: firstCutDate,
+        status: "pending",
+      });
+
       return { success: true };
     }),
 
