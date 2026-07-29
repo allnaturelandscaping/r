@@ -16,10 +16,14 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Build only the frontend (Vite)
-RUN pnpm exec vite build
+RUN NODE_ENV=production pnpm exec vite build
+
+# Verify the build output exists
+RUN ls -la dist/public/ || echo "WARNING: dist/public not found!"
 
 # Expose port
 EXPOSE 3000
 
 # Run server with tsx (no esbuild compilation needed)
-CMD ["pnpm", "exec", "cross-env", "NODE_ENV=production", "tsx", "server/_core/index.ts"]
+ENV NODE_ENV=production
+CMD ["pnpm", "exec", "tsx", "server/_core/index.ts"]
