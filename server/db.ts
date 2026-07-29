@@ -152,10 +152,22 @@ export async function updateClient(
 export async function deleteClient(id: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
+  // Marcar cliente como inactivo
   await db
     .update(clients)
     .set({ isActive: 0 })
     .where(and(eq(clients.id, id), eq(clients.userId, userId)));
+  // Eliminar todos los cortes pendientes del cliente del calendario
+  await db
+    .update(scheduledCuts)
+    .set({ status: "skipped" })
+    .where(
+      and(
+        eq(scheduledCuts.clientId, id),
+        eq(scheduledCuts.userId, userId),
+        eq(scheduledCuts.status, "pending")
+      )
+    );
 }
 
 // ─── Scheduled Cuts ───────────────────────────────────────────────────────────
@@ -246,7 +258,8 @@ export async function getCutsForMonth(
       and(
         eq(scheduledCuts.userId, userId),
         gte(scheduledCuts.scheduledDate, monthStart),
-        lte(scheduledCuts.scheduledDate, monthEnd)
+        lte(scheduledCuts.scheduledDate, monthEnd),
+        eq(clients.isActive, 1)
       )
     )
     .orderBy(asc(scheduledCuts.scheduledDate));
