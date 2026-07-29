@@ -1,13 +1,15 @@
-import { bigint, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
-// Tabla de usuarios (auth)
+// Tabla de usuarios con Google OAuth y sistema de aprobación
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
+  googleId: varchar("googleId", { length: 128 }).notNull().unique(),
+  email: varchar("email", { length: 320 }).notNull().unique(),
   name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
+  avatarUrl: text("avatarUrl"),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  // pending = esperando aprobación, approved = acceso concedido, rejected = acceso denegado
+  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -38,9 +40,9 @@ export const scheduledCuts = mysqlTable("scheduled_cuts", {
   id: int("id").autoincrement().primaryKey(),
   clientId: int("clientId").notNull(),
   userId: int("userId").notNull(),
-  scheduledDate: bigint("scheduledDate", { mode: "number" }).notNull(),
+  scheduledDate: int("scheduledDate", { unsigned: true }).notNull(),
   status: mysqlEnum("status", ["pending", "completed", "skipped"]).notNull().default("pending"),
-  completedAt: bigint("completedAt", { mode: "number" }),
+  completedAt: int("completedAt", { unsigned: true }),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

@@ -1,65 +1,83 @@
-import { COOKIE_NAME, ONE_YEAR_MS, OAUTH_STATE_COOKIE, decodeOAuthState } from "@shared/const";
-import { parse as parseCookieHeader } from "cookie";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
-import { sdk } from "./sdk";
-
-function getQueryParam(req: Request, key: string): string | undefined {
-  const value = req.query[key];
-  return typeof value === "string" ? value : undefined;
-}
+import { ENV } from "./env";
+import { exchangeGoogleCode, getGoogleAuthUrl, sdk } from "./sdk";
 
 export function registerOAuthRoutes(app: Express) {
-  app.get("/api/oauth/callback", async (req: Request, res: Response) => {
-    const code = getQueryParam(req, "code");
-    const state = getQueryParam(req, "state");
-
-    if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
+  // Redirige al usuario a la pantalla de login de Google
+  app.get("/api/auth/google", (_req: Request, res: Response) => {
+    if (!ENV.googleClientId || !ENV.googleClientSecret) {
+      res.status(503).json({
+        error:
+          "Google OAuth no está configurado. Agrega GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET al archivo .env",
+      });
       return;
     }
+    const url = getGoogleAuthUrl();
+    res.redirect(302, url);
+  });
 
-    // CSRF guard: the nonce in `state` must match the one-time cookie that
-    // startLogin set in the browser that began this login. An attacker can
-    // forge `state`, but cannot plant this cookie in the victim's browser.
-    const { nonce } = decodeOAuthState(state);
-    const expectedNonce = parseCookieHeader(req.headers.cookie ?? "")[OAUTH_STATE_COOKIE];
-    if (!nonce || nonce !== expectedNonce) {
-      res.status(403).json({ error: "invalid oauth state" });
+  // Google redirige aquí con el código de autorización
+  app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
+    const code = req.query["code"];
+    if (typeof code !== "string") {
+      res.status(400).json({ error: "Código de autorización faltante" });
       return;
     }
-    res.clearCookie(OAUTH_STATE_COOKIE, { path: "/", secure: true, sameSite: "none" });
 
     try {
-      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-      const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
+      const googleUser = await exchangeGoogleCode(code);
 
-      if (!userInfo.openId) {
-        res.status(400).json({ error: "openId missing from user info" });
+      // Determinar si es el dueño (admin automático)
+      const isOwner =
+        googleUser.email.toLowerCase() === ENV.ownerEmail.toLowerCase();
+
+      // Crear o actualizar el usuario en la base de datos
+      await db.upsertGoogleUser({
+        googleId: googleUser.googleId,
+        email: googleUser.email,
+        name: googleUser.name,
+        avatarUrl: googleUser.avatarUrl,
+        // El dueño siempre es admin y aprobado; los demás empiezan como pending
+        role: isOwner ? "admin" : "user",
+        status: isOwner ? "approved" : undefined, // undefined = no sobreescribir si ya existe
+      });
+
+      const user = await db.getUserByGoogleId(googleUser.googleId);
+      if (!user) {
+        res.status(500).json({ error: "Error al crear el usuario" });
         return;
       }
 
-      await db.upsertUser({
-        openId: userInfo.openId,
-        name: userInfo.name || null,
-        email: userInfo.email ?? null,
-        loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-        lastSignedIn: new Date(),
-      });
+      // Si el usuario está rechazado, redirigir con error
+      if (user.status === "rejected") {
+        res.redirect(302, "/?error=rejected");
+        return;
+      }
 
-      const sessionToken = await sdk.createSessionToken(userInfo.openId, {
-        name: userInfo.name || "",
+      // Si está pendiente de aprobación, redirigir a pantalla de espera
+      if (user.status === "pending") {
+        res.redirect(302, "/?error=pending");
+        return;
+      }
+
+      // Usuario aprobado: crear sesión JWT
+      const sessionToken = await sdk.createSessionToken(user.id, user.email, {
         expiresInMs: ONE_YEAR_MS,
       });
 
       const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      res.cookie(COOKIE_NAME, sessionToken, {
+        ...cookieOptions,
+        maxAge: ONE_YEAR_MS,
+      });
 
       res.redirect(302, "/");
     } catch (error) {
-      console.error("[OAuth] Callback failed", error);
-      res.status(500).json({ error: "OAuth callback failed" });
+      console.error("[OAuth] Google callback failed:", error);
+      res.redirect(302, "/?error=oauth_failed");
     }
   });
 }

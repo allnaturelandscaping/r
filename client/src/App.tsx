@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Clients from "./pages/Clients";
 import ClientDetail from "./pages/ClientDetail";
 import Calendar from "./pages/CalendarView";
+import AdminUsers from "./pages/AdminUsers";
 import AppLayout from "./components/AppLayout";
 
 function Router() {
@@ -18,6 +19,7 @@ function Router() {
         <Route path="/clients" component={Clients} />
         <Route path="/clients/:id" component={ClientDetail} />
         <Route path="/calendar" component={Calendar} />
+        <Route path="/admin/users" component={AdminUsers} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

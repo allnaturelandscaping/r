@@ -1,7 +1,13 @@
-import { and, asc, desc, eq, gte, lt, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt, lte, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { clients, InsertClient, InsertScheduledCut, InsertUser, scheduledCuts, users } from "../drizzle/schema";
-import { ENV } from "./_core/env";
+import {
+  clients,
+  InsertClient,
+  InsertScheduledCut,
+  InsertUser,
+  scheduledCuts,
+  users,
+} from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -19,46 +25,85 @@ export async function getDb() {
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) throw new Error("User openId is required for upsert");
+export async function upsertGoogleUser(data: {
+  googleId: string;
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
+  role?: "user" | "admin";
+  status?: "pending" | "approved" | "rejected";
+}) {
   const db = await getDb();
-  if (!db) return;
+  if (!db) throw new Error("DB not available");
 
-  const values: InsertUser = { openId: user.openId };
-  const updateSet: Record<string, unknown> = {};
+  const updateSet: Record<string, unknown> = {
+    name: data.name,
+    avatarUrl: data.avatarUrl,
+    lastSignedIn: new Date(),
+  };
+  if (data.role) updateSet.role = data.role;
+  if (data.status) updateSet.status = data.status;
 
-  const textFields = ["name", "email", "loginMethod"] as const;
-  for (const field of textFields) {
-    const value = user[field];
-    if (value !== undefined) {
-      values[field] = value ?? null;
-      updateSet[field] = value ?? null;
-    }
-  }
-
-  if (user.lastSignedIn !== undefined) {
-    values.lastSignedIn = user.lastSignedIn;
-    updateSet.lastSignedIn = user.lastSignedIn;
-  }
-  if (user.role !== undefined) {
-    values.role = user.role;
-    updateSet.role = user.role;
-  } else if (user.openId === ENV.ownerOpenId) {
-    values.role = "admin";
-    updateSet.role = "admin";
-  }
-
-  if (!values.lastSignedIn) values.lastSignedIn = new Date();
-  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
-
-  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+  await db
+    .insert(users)
+    .values({
+      googleId: data.googleId,
+      email: data.email,
+      name: data.name,
+      avatarUrl: data.avatarUrl,
+      role: data.role ?? "user",
+      status: data.status ?? "pending",
+      lastSignedIn: new Date(),
+    })
+    .onDuplicateKeyUpdate({ set: updateSet });
 }
 
-export async function getUserByOpenId(openId: string) {
+export async function getUserByGoogleId(googleId: string) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  const result = await db
+    .select()
+    .from(users)
+    .where(eq(users.googleId, googleId))
+    .limit(1);
+  return result[0];
+}
+
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result[0];
+}
+
+export async function updateLastSignedIn(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(users)
+    .set({ lastSignedIn: new Date() })
+    .where(eq(users.id, id));
+}
+
+// Obtener todos los usuarios (excepto el admin) para el panel de gestión
+export async function getAllNonAdminUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(users)
+    .where(ne(users.role, "admin"))
+    .orderBy(desc(users.createdAt));
+}
+
+// Actualizar el status de un usuario (approved / rejected / pending)
+export async function setUserStatus(
+  userId: number,
+  status: "pending" | "approved" | "rejected"
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(users).set({ status }).where(eq(users.id, userId));
 }
 
 // ─── Clients ──────────────────────────────────────────────────────────────────
@@ -91,17 +136,26 @@ export async function createClient(data: InsertClient) {
   return result[0];
 }
 
-export async function updateClient(id: number, userId: number, data: Partial<InsertClient>) {
+export async function updateClient(
+  id: number,
+  userId: number,
+  data: Partial<InsertClient>
+) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.update(clients).set(data).where(and(eq(clients.id, id), eq(clients.userId, userId)));
+  await db
+    .update(clients)
+    .set(data)
+    .where(and(eq(clients.id, id), eq(clients.userId, userId)));
 }
 
 export async function deleteClient(id: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  // Soft delete
-  await db.update(clients).set({ isActive: 0 }).where(and(eq(clients.id, id), eq(clients.userId, userId)));
+  await db
+    .update(clients)
+    .set({ isActive: 0 })
+    .where(and(eq(clients.id, id), eq(clients.userId, userId)));
 }
 
 // ─── Scheduled Cuts ───────────────────────────────────────────────────────────
@@ -116,14 +170,15 @@ export async function getCutsByUserId(userId: number) {
     .orderBy(asc(scheduledCuts.scheduledDate));
 }
 
-export async function getTodayCuts(userId: number, todayStart: number, todayEnd: number) {
+export async function getTodayCuts(
+  userId: number,
+  todayStart: number,
+  todayEnd: number
+) {
   const db = await getDb();
   if (!db) return [];
   return db
-    .select({
-      cut: scheduledCuts,
-      client: clients,
-    })
+    .select({ cut: scheduledCuts, client: clients })
     .from(scheduledCuts)
     .innerJoin(clients, eq(scheduledCuts.clientId, clients.id))
     .where(
@@ -141,10 +196,7 @@ export async function getOverdueCuts(userId: number, todayStart: number) {
   const db = await getDb();
   if (!db) return [];
   return db
-    .select({
-      cut: scheduledCuts,
-      client: clients,
-    })
+    .select({ cut: scheduledCuts, client: clients })
     .from(scheduledCuts)
     .innerJoin(clients, eq(scheduledCuts.clientId, clients.id))
     .where(
@@ -157,14 +209,15 @@ export async function getOverdueCuts(userId: number, todayStart: number) {
     .orderBy(asc(scheduledCuts.scheduledDate));
 }
 
-export async function getUpcomingCuts(userId: number, fromTs: number, toTs: number) {
+export async function getUpcomingCuts(
+  userId: number,
+  fromTs: number,
+  toTs: number
+) {
   const db = await getDb();
   if (!db) return [];
   return db
-    .select({
-      cut: scheduledCuts,
-      client: clients,
-    })
+    .select({ cut: scheduledCuts, client: clients })
     .from(scheduledCuts)
     .innerJoin(clients, eq(scheduledCuts.clientId, clients.id))
     .where(
@@ -178,14 +231,15 @@ export async function getUpcomingCuts(userId: number, fromTs: number, toTs: numb
     .orderBy(asc(scheduledCuts.scheduledDate));
 }
 
-export async function getCutsForMonth(userId: number, monthStart: number, monthEnd: number) {
+export async function getCutsForMonth(
+  userId: number,
+  monthStart: number,
+  monthEnd: number
+) {
   const db = await getDb();
   if (!db) return [];
   return db
-    .select({
-      cut: scheduledCuts,
-      client: clients,
-    })
+    .select({ cut: scheduledCuts, client: clients })
     .from(scheduledCuts)
     .innerJoin(clients, eq(scheduledCuts.clientId, clients.id))
     .where(
@@ -204,7 +258,12 @@ export async function getCutHistoryByClient(clientId: number, userId: number) {
   return db
     .select()
     .from(scheduledCuts)
-    .where(and(eq(scheduledCuts.clientId, clientId), eq(scheduledCuts.userId, userId)))
+    .where(
+      and(
+        eq(scheduledCuts.clientId, clientId),
+        eq(scheduledCuts.userId, userId)
+      )
+    )
     .orderBy(desc(scheduledCuts.scheduledDate));
 }
 
@@ -214,12 +273,20 @@ export async function createScheduledCut(data: InsertScheduledCut) {
   await db.insert(scheduledCuts).values(data);
 }
 
-export async function completeCut(id: number, userId: number, notes?: string) {
+export async function completeCut(
+  id: number,
+  userId: number,
+  notes?: string
+) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db
     .update(scheduledCuts)
-    .set({ status: "completed", completedAt: Date.now(), notes: notes ?? null })
+    .set({
+      status: "completed",
+      completedAt: Date.now(),
+      notes: notes ?? null,
+    })
     .where(and(eq(scheduledCuts.id, id), eq(scheduledCuts.userId, userId)));
 }
 
@@ -232,7 +299,10 @@ export async function skipCut(id: number, userId: number) {
     .where(and(eq(scheduledCuts.id, id), eq(scheduledCuts.userId, userId)));
 }
 
-export async function getNextPendingCutForClient(clientId: number, userId: number) {
+export async function getNextPendingCutForClient(
+  clientId: number,
+  userId: number
+) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db
