@@ -6,6 +6,16 @@ import { ENV } from "./env";
 import { exchangeGoogleCode, getGoogleAuthUrl, sdk } from "./sdk";
 
 export function registerOAuthRoutes(app: Express) {
+  // Debug: muestra el redirect URI que se está usando
+  app.get("/api/auth/debug", (_req: Request, res: Response) => {
+    const redirectUri = `${process.env.APP_URL || "http://localhost:3000"}/api/auth/google/callback`;
+    res.json({
+      APP_URL: process.env.APP_URL,
+      redirectUri,
+      NODE_ENV: process.env.NODE_ENV,
+    });
+  });
+
   // Redirige al usuario a la pantalla de login de Google
   app.get("/api/auth/google", (_req: Request, res: Response) => {
     if (!ENV.googleClientId || !ENV.googleClientSecret) {
