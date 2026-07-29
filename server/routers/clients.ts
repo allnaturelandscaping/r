@@ -36,23 +36,29 @@ export const clientsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { firstCutDate, ...clientData } = input;
-      const newClientId = await createClient({
-        ...clientData,
-        userId: ctx.user.id,
-        phone: clientData.phone ?? null,
-        notes: clientData.notes ?? null,
-      });
+      console.log("[clients.create] input:", JSON.stringify(input));
+      try {
+        const { firstCutDate, ...clientData } = input;
+        const newClientId = await createClient({
+          ...clientData,
+          userId: ctx.user.id,
+          phone: clientData.phone ?? null,
+          notes: clientData.notes ?? null,
+        });
+        console.log("[clients.create] newClientId:", newClientId);
 
-      // Programar el primer corte usando el insertId directamente
-      await createScheduledCut({
-        clientId: newClientId,
-        userId: ctx.user.id,
-        scheduledDate: firstCutDate,
-        status: "pending",
-      });
-
-      return { success: true };
+        await createScheduledCut({
+          clientId: newClientId,
+          userId: ctx.user.id,
+          scheduledDate: firstCutDate,
+          status: "pending",
+        });
+        console.log("[clients.create] cut scheduled OK");
+        return { success: true };
+      } catch (err) {
+        console.error("[clients.create] ERROR:", err);
+        throw err;
+      }
     }),
 
   update: protectedProcedure
