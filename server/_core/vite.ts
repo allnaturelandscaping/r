@@ -49,8 +49,8 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  // En producción con tsx: __dirname es server/_core, subimos 2 niveles a la raíz del proyecto
-  const distPath = path.resolve(import.meta.dirname, "..", "..", "dist", "public");
+  // Usar process.cwd() que siempre apunta a la raíz del proyecto
+  const distPath = path.resolve(process.cwd(), "dist", "public");
 
   if (!fs.existsSync(distPath)) {
     console.error(
