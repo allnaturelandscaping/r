@@ -49,19 +49,41 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  // Usar process.cwd() que siempre apunta a la raíz del proyecto
-  const distPath = path.resolve(process.cwd(), "dist", "public");
+  // Intentar múltiples paths posibles para el build del frontend
+  const possiblePaths = [
+    path.resolve(process.cwd(), "dist", "public"),
+    path.resolve(process.cwd(), "dist"),
+    path.resolve("/app", "dist", "public"),
+    path.resolve("/app", "dist"),
+  ];
 
-  if (!fs.existsSync(distPath)) {
-    console.error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
-    );
+  let distPath: string | null = null;
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p) && fs.existsSync(path.join(p, "index.html"))) {
+      distPath = p;
+      console.log(`[static] Serving frontend from: ${distPath}`);
+      break;
+    }
+  }
+
+  if (!distPath) {
+    console.error(`[static] Could not find build directory. Tried:`);
+    for (const p of possiblePaths) {
+      console.error(`  - ${p} (exists: ${fs.existsSync(p)})`);
+    }
+    // Servir un mensaje de error en lugar de colgar
+    app.use("*", (_req, res) => {
+      res.status(503).send(
+        "<h1>Frontend not built</h1><p>Run <code>pnpm build</code> first.</p>"
+      );
+    });
+    return;
   }
 
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist
   app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+    res.sendFile(path.resolve(distPath!, "index.html"));
   });
 }
