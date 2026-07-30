@@ -5,25 +5,29 @@ RUN npm install -g pnpm@10.4.1
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files first (for layer caching)
 COPY package.json pnpm-lock.yaml* ./
-COPY patches/ ./patches/
 
-# Install ALL dependencies (vite needed for frontend build, tsx for runtime)
+# Copy patches if they exist
+COPY patches/ ./patches/ 2>/dev/null || true
+
+# Install ALL dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy source code
+# Copy all source code
 COPY . .
 
-# Build only the frontend (Vite)
-RUN NODE_ENV=production pnpm exec vite build
+# Build the frontend with Vite
+RUN pnpm exec vite build
 
-# Verify the build output exists
-RUN ls -la dist/public/ || echo "WARNING: dist/public not found!"
+# Verify the build output
+RUN echo "=== Build output ===" && ls -la dist/ && echo "=== dist/public ===" && ls -la dist/public/
 
-# Expose port
+# Set environment
+ENV NODE_ENV=production
+
+# Railway assigns PORT automatically
 EXPOSE 3000
 
-# Run server with tsx (no esbuild compilation needed)
-ENV NODE_ENV=production
+# Start the server
 CMD ["pnpm", "exec", "tsx", "server/_core/index.ts"]
