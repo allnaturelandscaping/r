@@ -8,9 +8,6 @@ WORKDIR /app
 # Copy package files first (for layer caching)
 COPY package.json pnpm-lock.yaml* ./
 
-# Copy patches if they exist
-COPY patches/ ./patches/ 2>/dev/null || true
-
 # Install ALL dependencies
 RUN pnpm install --frozen-lockfile
 
@@ -21,7 +18,7 @@ COPY . .
 RUN pnpm exec vite build
 
 # Verify the build output
-RUN echo "=== Build output ===" && ls -la dist/ && echo "=== dist/public ===" && ls -la dist/public/
+RUN echo "=== dist/public ===" && ls -la dist/public/
 
 # Set environment
 ENV NODE_ENV=production
