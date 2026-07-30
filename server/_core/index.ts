@@ -7,6 +7,13 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
+console.log("[startup] Initializing server...");
+console.log("[startup] NODE_ENV:", process.env.NODE_ENV);
+console.log("[startup] PORT:", process.env.PORT);
+console.log("[startup] APP_URL:", process.env.APP_URL);
+console.log("[startup] GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID ? "SET" : "NOT SET");
+console.log("[startup] DATABASE_URL:", process.env.DATABASE_URL ? "SET" : "NOT SET");
+
 async function startServer() {
   const app = express();
   const server = createServer(app);
@@ -14,7 +21,7 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // Debug: verificar variables de entorno (solo en producción para diagnóstico)
+  // Debug: verificar variables de entorno
   app.get("/api/debug-env", (_req, res) => {
     res.json({
       NODE_ENV: process.env.NODE_ENV,
@@ -50,8 +57,11 @@ async function startServer() {
   const port = parseInt(process.env.PORT || "3000");
 
   server.listen(port, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${port}/`);
+    console.log(`[startup] Server running on http://0.0.0.0:${port}/`);
   });
 }
 
-startServer().catch(console.error);
+startServer().catch((err) => {
+  console.error("[startup] FATAL ERROR:", err);
+  process.exit(1);
+});
